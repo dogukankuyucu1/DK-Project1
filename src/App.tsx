@@ -247,3 +247,276 @@ export default function App() {
   }
 
 // (UI kısmı ve AuthScreen bileşeni 3/3 bölümünde gelecek)
+  // --- UI (render) ---
+  if (!supabase) {
+    return (
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <div className="max-w-md w-full space-y-4 text-center">
+          <h1 className="text-2xl font-bold">Supabase Ayarlanmadı</h1>
+          <p>
+            Çalışması için <code>VITE_SUPABASE_URL</code> ve{" "}
+            <code>VITE_SUPABASE_ANON_KEY</code> değişkenlerini .env içine yazın.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) return <div className="min-h-screen p-6">Yükleniyor…</div>;
+  if (!session) return <AuthScreen />;
+
+  return (
+    <div className="min-h-screen w-full bg-gray-50 text-gray-900 p-4 md:p-8">
+      <div className="max-w-[1200px] mx-auto grid gap-4">
+        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">
+              Ödeme Takip (2025 Eyl → 2026 Eyl)
+            </h1>
+            <p className="text-sm text-gray-600">
+              Gerçek zamanlı, paylaşımlı tablo. Komut örneği:{" "}
+              <span className="font-medium">
+                "Doğukan Kuyucu ekim ayı ödendi"
+              </span>
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={() => supabase!.auth.signOut()}
+              className="px-3 py-2 rounded-xl bg-white border"
+            >
+              Çıkış
+            </button>
+          </div>
+        </header>
+
+        {/* Liste seçim / CSV */}
+        <div className="flex flex-wrap items-center gap-2">
+          {lists.map((l) => (
+            <button
+              key={l.id}
+              onClick={() => setActiveListId(l.id)}
+              className={`px-3 py-1.5 rounded-full border ${
+                activeListId === l.id ? "bg-black text-white" : "bg-white"
+              }`}
+            >
+              {l.name}
+            </button>
+          ))}
+          {activeListId && (
+            <>
+              <button
+                onClick={() =>
+                  exportCSV(lists.find((l) => l.id === activeListId)!)
+                }
+                className="ml-auto px-3 py-1.5 rounded-full bg-white border"
+              >
+                CSV İndir
+              </button>
+              <button
+                onClick={async () => {
+                  // basit silme
+                  await supabase.from("lists").delete().eq("id", activeListId);
+                  setLists((prev) => prev.filter((x) => x.id !== activeListId));
+                  setActiveListId(lists[0]?.id || "");
+                }}
+                className="px-3 py-1.5 rounded-full bg-white border hover:bg-red-50"
+              >
+                Listeyi Sil
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Arama / Ekle / Komut */}
+        <div className="grid md:grid-cols-3 gap-3">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Sporcu ara"
+            className="px-3 py-2 rounded-xl border bg-white"
+          />
+          <div className="flex gap-2">
+            <input
+              value={newAthlete}
+              onChange={(e) => setNewAthlete(e.target.value)}
+              placeholder="Yeni sporcu adı"
+              className="px-3 py-2 rounded-xl border bg-white w-full"
+            />
+            <button
+              onClick={addAthlete}
+              className="px-3 py-2 rounded-xl bg-black text-white"
+            >
+              Ekle
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              placeholder="Komut yaz: 'Doğukan Kuyucu ekim ayı ödendi'"
+              className="px-3 py-2 rounded-xl border bg-white w-full"
+            />
+            <button
+              onClick={handleCommand}
+              className="px-3 py-2 rounded-xl bg-white border"
+            >
+              Uygula
+            </button>
+          </div>
+        </div>
+
+        {/* Tablo */}
+        <div className="overflow-auto rounded-2xl border bg-white">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-100 z-10">
+              <tr>
+                <th className="text-left p-3 min-w-[220px]">Sporcu Adı</th>
+                {MONTHS.map((m) => (
+                  <th
+                    key={m.key}
+                    className="p-3 text-center whitespace-nowrap"
+                  >
+                    {m.label}
+                  </th>
+                ))}
+                <th className="p-3 text-center">Toplu</th>
+                <th className="p-3 text-center">Sil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {athletes
+                .filter(
+                  (a) =>
+                    a.list_id === activeListId &&
+                    normalizeTr(a.name).includes(normalizeTr(search))
+                )
+                .map((a) => (
+                  <tr key={a.id} className="border-t hover:bg-gray-50">
+                    <td className="p-2 font-medium">{a.name}</td>
+                    {MONTHS.map((m) => (
+                      <td key={m.key} className="p-1 text-center">
+                        <button
+                          onClick={() => togglePayment(a.id, m.key)}
+                          className={`w-8 h-8 rounded-lg border flex items-center justify-center mx-auto ${
+                            a.payments?.[m.key]
+                              ? "bg-green-100 border-green-300"
+                              : "bg-white"
+                          }`}
+                        >
+                          {a.payments?.[m.key] ? "✅" : "⬜"}
+                        </button>
+                      </td>
+                    ))}
+                    <td className="p-1 text-center">
+                      <div className="flex gap-1 justify-center">
+                        <button
+                          onClick={() => markAllForAthlete(a.id, true)}
+                          className="px-2 py-1 rounded-lg border bg-white"
+                        >
+                          Tümü ✅
+                        </button>
+                        <button
+                          onClick={() => markAllForAthlete(a.id, false)}
+                          className="px-2 py-1 rounded-lg border bg-white"
+                        >
+                          Temizle
+                        </button>
+                      </div>
+                    </td>
+                    <td className="p-1 text-center">
+                      <button
+                        onClick={() => deleteAthlete(a.id)}
+                        className="px-2 py-1 rounded-lg border bg-white hover:bg-red-50"
+                      >
+                        Sil
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Komut örnekleri */}
+        <div className="text-xs text-gray-600 leading-relaxed">
+          <p className="font-semibold">Komut örnekleri</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              <code>Doğukan Kuyucu ekim ayı ödendi</code>
+            </li>
+            <li>
+              <code>Doğukan Kuyucu tüm ocak ve şubat ödendi</code>
+            </li>
+            <li>
+              <code>Ayşe Yılmaz aralık ayı ödenmedi</code>
+            </li>
+            <li>
+              <code>Ali Veli tüm ödendi</code>
+            </li>
+          </ul>
+        </div>
+
+        {toast && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-2 rounded-full shadow-xl">
+            {toast}
+          </div>
+        )}
+        {error && (
+          <div className="fixed bottom-16 left-1/2 -translate-x-1/2 bg-red-600 text-white px-4 py-2 rounded-full shadow-xl">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Giriş ekranı (magic link) ---
+function AuthScreen() {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function sendLink(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    if (!supabase) return;
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) setErr(error.message);
+    else setSent(true);
+  }
+
+  return (
+    <div className="min-h-screen p-6 flex items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md bg-white rounded-2xl border p-6 grid gap-4">
+        <h1 className="text-2xl font-bold">Giriş</h1>
+        <p className="text-sm text-gray-600">
+          E-postanı yaz; gelen bağlantı ile giriş yap.
+        </p>
+        <form onSubmit={sendLink} className="grid gap-3">
+          <input
+            type="email"
+            required
+            placeholder="ornek@domain.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="px-3 py-2 rounded-xl border"
+          />
+          <button className="px-3 py-2 rounded-xl bg-black text-white">
+            Giriş Bağlantısı Gönder
+          </button>
+        </form>
+        {sent && (
+          <div className="text-green-700 text-sm">
+            Link gönderildi. E-postanı kontrol et.
+          </div>
+        )}
+        {err && <div className="text-red-600 text-sm">{err}</div>}
+      </div>
+    </div>
+  );
+}
